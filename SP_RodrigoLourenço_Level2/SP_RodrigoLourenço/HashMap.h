@@ -1,26 +1,79 @@
 // HashMap.h
 #ifndef HASHMAP_H
 #define HASHMAP_H
-#include <unordered_map>
+
+#include <functional>
+#include "Vector.h"
 
 template<typename K, typename V>
 class HashMap {
-    std::unordered_map<K, V> m_;
+private:
+    struct Entry {
+        K key;
+        V value;
+    };
+
+    Vector<Entry>* buckets;
+    size_t bucketCount;
+
+    // Compute bucket index from key
+    size_t hashKey(const K& key) const {
+        return std::hash<K>{}(key) % bucketCount;
+    }
+
 public:
-    using iterator = typename std::unordered_map<K, V>::iterator;
-    using const_iterator = typename std::unordered_map<K, V>::const_iterator;
+    // Constructor: create “initBuckets” empty buckets
+    HashMap(size_t initBuckets = 101) {
+        bucketCount = initBuckets;
+        buckets = new Vector<Entry>[bucketCount];
+    }
 
-    V& operator[](const K& k) { return m_[k]; }
-    iterator       find(const K& k) { return m_.find(k); }
-    const_iterator find(const K& k) const { return m_.find(k); }
+    // Destructor: only deletes the bucket‐array; does NOT delete any V inside
+    ~HashMap() {
+        delete[] buckets;
+    }
 
-    iterator       begin() { return m_.begin(); }
-    const_iterator begin() const { return m_.begin(); }
-    iterator       end() { return m_.end(); }
-    const_iterator end()   const { return m_.end(); }
+    // [] operator: if “key” exists, return reference to its value;
+    // otherwise insert (key, V()) and return reference to the newly inserted V.
+    V& operator[](const K& key) {
+        size_t idx = hashKey(key);
+        auto& bucket = buckets[idx];
+        for (size_t i = 0; i < bucket.size(); ++i) {
+            if (bucket[i].key == key) {
+                return bucket[i].value;
+            }
+        }
+        // Not found → insert new Entry
+        Entry e;
+        e.key = key;
+        e.value = V();
+        bucket.push_back(e);
+        return bucket[bucket.size() - 1].value;
+    }
 
-    void clear() { m_.clear(); }
+    // find(key): return pointer to V if found, or nullptr otherwise
+    V* find(const K& key) {
+        size_t idx = hashKey(key);
+        auto& bucket = buckets[idx];
+        for (size_t i = 0; i < bucket.size(); ++i) {
+            if (bucket[i].key == key) {
+                return &bucket[i].value;
+            }
+        }
+        return nullptr;
+    }
+
+    // const‐version of find
+    const V* find(const K& key) const {
+        size_t idx = hashKey(key);
+        auto& bucket = buckets[idx];
+        for (size_t i = 0; i < bucket.size(); ++i) {
+            if (bucket[i].key == key) {
+                return &bucket[i].value;
+            }
+        }
+        return nullptr;
+    }
 };
 
-#endif
-
+#endif // HASHMAP_H
