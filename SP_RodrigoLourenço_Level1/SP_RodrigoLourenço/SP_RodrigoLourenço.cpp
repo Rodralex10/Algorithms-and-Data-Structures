@@ -7,91 +7,73 @@
 #include <cctype>
 #include <stdexcept>
 #include <limits>
+#define _CRTDBG_MAP_ALLOC
+#include <cstdlib>
+#include <crtdbg.h>
+
 
 #ifdef _WIN32
 #ifndef NOMINMAX
-#define NOMINMAX        // prevent Windows.h from defining min/max macros
+#define NOMINMAX
 #endif
-#include <Windows.h>      // for SetConsoleCP / SetConsoleOutputCP
+#include <Windows.h>
 #endif
 
-#include "Vector.h"          // lab-implemented dynamic array
-#include "Map.h"             // lab-implemented associative map
+#include "Vector.h"
+#include "Map.h"
 
-// Array of years, used both for file names and indexing
+// Array of years for iteration
 static const std::string YEARS[] = { "2020", "2021", "2022", "2023", "2024" };
 static const size_t N_YEARS = sizeof(YEARS) / sizeof(YEARS[0]);
 
-// Helper: remove any non-alphanumeric characters from a code string
+// Clean up non-alphanumeric characters from code strings
 static std::string cleanCode(const std::string& s) {
     std::string out;
     for (unsigned char c : s) {
-        if (std::isalnum(c)) {
-            out.push_back(c);
-        }
+        if (std::isalnum(c)) out.push_back(c);
     }
     return out;
 }
 
-// Data structure holding one municipality's name, code, and
-// male/female counts for each of the five years
+// Data per municipality with 5 years of data
 struct FlatMunicipality {
-    std::string name;
-    std::string code;
+    std::string name, code;
     int male[N_YEARS] = { 0 };
     int female[N_YEARS] = { 0 };
 };
 
-// Load all five CSV files (named "2020.csv", ..., "2024.csv").
-// Merge records by municipality code into a single Vector.
-// Uses the lab Map to track code → index mapping.
+// Load all years and merge by municipality code
 static void loadAll(Vector<FlatMunicipality>& out) {
     Map<std::string, size_t> indexMap;
 
     for (size_t yi = 0; yi < N_YEARS; ++yi) {
         std::ifstream file(YEARS[yi] + ".csv");
         if (!file) {
-            std::cerr << "Warning: cannot open " << YEARS[yi] << ".csv\n";
+            std::cerr << "Warning: Cannot open " << YEARS[yi] << ".csv\n";
             continue;
         }
 
         std::string line;
-        std::getline(file, line);  // skip header row
+        std::getline(file, line);  // skip header
 
         while (std::getline(file, line)) {
             if (line.empty()) continue;
-
             std::istringstream ss(line);
             FlatMunicipality temp;
             std::string token;
 
-            // Read name
             std::getline(ss, temp.name, ';');
+            std::getline(ss, token, ';'); temp.code = cleanCode(token);
+            std::getline(ss, token, ';'); temp.male[yi] = std::stoi(token);
+            std::getline(ss, token, ';'); // skip
+            std::getline(ss, token, ';'); temp.female[yi] = std::stoi(token);
 
-            // Read and clean code
-            std::getline(ss, token, ';');
-            temp.code = cleanCode(token);
-
-            // Read male count for this year
-            std::getline(ss, token, ';');
-            temp.male[yi] = std::stoi(token);
-
-            // Skip next column
-            std::getline(ss, token, ';');
-
-            // Read female count for this year
-            std::getline(ss, token, ';');
-            temp.female[yi] = std::stoi(token);
-
-            // Merge into 'out' using the Map for lookup
             auto it = indexMap.find(temp.code);
             if (it == indexMap.end()) {
-                // Not yet inserted: add new record
                 out.push_back(temp);
                 indexMap[temp.code] = out.size() - 1;
             }
             else {
-                // Already exists: update the existing entry's counts
                 size_t idx = it->second;
                 out[idx].male[yi] = temp.male[yi];
                 out[idx].female[yi] = temp.female[yi];
@@ -100,8 +82,7 @@ static void loadAll(Vector<FlatMunicipality>& out) {
     }
 }
 
-// Generic filter algorithm: takes a container and a predicate,
-// returns a new Vector of elements satisfying the predicate.
+// Generic filter for any predicate
 template<typename Pred>
 Vector<FlatMunicipality> filter(const Vector<FlatMunicipality>& data, Pred predicate) {
     Vector<FlatMunicipality> result;
@@ -113,27 +94,21 @@ Vector<FlatMunicipality> filter(const Vector<FlatMunicipality>& data, Pred predi
     return result;
 }
 
-// Print one municipality record, showing name, code, and
-// male/female/total for each year.
+// Print one municipality's record
 static void printFlat(const FlatMunicipality& m) {
-    std::cout << "Name: " << m.name
-        << ", Code: " << m.code << "\n";
+    std::cout << "Name: " << m.name << ", Code: " << m.code << "\n";
     for (size_t i = 0; i < N_YEARS; ++i) {
-        int mn = m.male[i], fn = m.female[i];
-        std::cout << "  " << YEARS[i]
-            << ": Male=" << mn
-                << ", Female=" << fn
-                << ", Total=" << (mn + fn)
-                << "\n";
+        std::cout << "  " << YEARS[i] << ": Male=" << m.male[i]
+            << ", Female=" << m.female[i]
+                << ", Total=" << (m.male[i] + m.female[i]) << "\n";
     }
     std::cout << "\n";
 }
 
-// Program entry point:
-// - On Windows, set console to UTF-8 so accents display properly
-// - Load all data once
-// - Present interactive menu to filter by substring, max, or min
 int main() {
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+
+
 #ifdef _WIN32
     SetConsoleOutputCP(65001);
     SetConsoleCP(65001);
@@ -160,7 +135,6 @@ int main() {
         std::cin >> choice;
 
         if (choice == 1) {
-            // Substring filter
             std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
             std::cout << "Enter substring: ";
             std::string sub;
@@ -173,20 +147,13 @@ int main() {
                 return low.find(sub) != std::string::npos;
                 });
 
-            if (matches.size() == 0) {
-                std::cout << "No matches.\n\n";
-            }
-            else {
-                for (size_t i = 0; i < matches.size(); ++i)
-                    printFlat(matches[i]);
-            }
+            if (matches.size() == 0) std::cout << "No matches.\n\n";
+            else for (size_t i = 0; i < matches.size(); ++i) printFlat(matches[i]);
         }
         else if (choice == 2 || choice == 3) {
-            // Max/min population filter for a specific year
-            std::cout << "Enter year (Between 2020 and 2024): ";
+            std::cout << "Enter year (2020–2024): ";
             std::string yr;
             std::cin >> yr;
-
             size_t yi = 0;
             while (yi < N_YEARS && YEARS[yi] != yr) ++yi;
             if (yi == N_YEARS) {
@@ -194,25 +161,17 @@ int main() {
                 continue;
             }
 
-            std::cout << "Enter "
-                << (choice == 2 ? "max" : "min")
-                << " total population: ";
+            std::cout << "Enter " << (choice == 2 ? "max" : "min") << " total population: ";
             int threshold;
             std::cin >> threshold;
 
             auto matches = filter(data, [&](const FlatMunicipality& m) {
                 int total = m.male[yi] + m.female[yi];
-                return choice == 2 ? (total <= threshold)
-                    : (total >= threshold);
+                return choice == 2 ? (total <= threshold) : (total >= threshold);
                 });
 
-            if (matches.size() == 0) {
-                std::cout << "No matches.\n\n";
-            }
-            else {
-                for (size_t i = 0; i < matches.size(); ++i)
-                    printFlat(matches[i]);
-            }
+            if (matches.size() == 0) std::cout << "No matches.\n\n";
+            else for (size_t i = 0; i < matches.size(); ++i) printFlat(matches[i]);
         }
 
     } while (choice != 0);
